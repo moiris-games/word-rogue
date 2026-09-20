@@ -1,9 +1,9 @@
 # Word Rogue — Software Requirements Specification (v1)
 
-**Status:** Draft 6 · **Date:** 2026-09-20 · **Owner:** Khaled AbuShqear
+**Status:** Draft 7 · **Date:** 2026-09-20 · **Owner:** Khaled AbuShqear
 **Source of truth for:** the v1 Android release of Word Rogue
 **Derived from:** `docs/word-rogue-brief.md` (concept brief)
-**Reference implementation for stack and tooling:** the `flick-dot` repo (`moiris-games/flick-dot`)
+**Build and release toolchain borrowed from:** the `flick-dot` repo (`moiris-games/flick-dot`) — its pipeline only, not its product decisions
 
 ---
 
@@ -52,7 +52,7 @@ A requirement that cannot be turned into an automated test, a golden-corpus case
 
 ### 0.4 What changed in draft 3
 
-Draft 2 specified **Godot 4.7 + GDScript**, with the grammar engine written twice (GDScript for the game, Python as the content-pipeline reference). Draft 3 moves the whole project onto the **Expo / React Native / TypeScript** stack already proven in `flick-dot`, so one toolchain, one CI setup and one deployment pipeline serve both games.
+Draft 2 specified **Godot 4.7 + GDScript**, with the grammar engine written twice (GDScript for the game, Python as the content-pipeline reference). Draft 3 moves the whole project onto the **Expo / React Native / TypeScript** stack, reusing a shipping pipeline the studio already had working.
 
 Everything about the *game* — the design, the numbers, the content scope, the learning layer, the economy — is unchanged. What changed is §12 in full, the engine's implementation count (`ENG-005`–`ENG-007`), the parts of §15 and §16 that named Godot, and the milestone list. A line-by-line changelog is in §18.7.
 
@@ -75,6 +75,16 @@ Draft 5 also folds in the draft-4 recommendations: generated handles instead of 
 Nothing new was designed. Seventeen decisions that had been sitting as recommendations were made, and the document now says what the game is rather than what it might be. Six new requirements carry choices that previously had nowhere to live — Ink Level scaling, the type family, the Satchel archetypes, the seal authoring passes, the commissioned art scope, and a property-based fuzzer that replaces the bug-catching the second engine implementation would have given.
 
 What remains open is only what evidence can settle: the balance numbers, the daily attempt count, and the visual direction. Changelog in §18.10.
+
+### 0.8 What changed in draft 7
+
+Draft 3 adopted a stack by pointing at a working project. That was the right way to *choose* it and the wrong way to *specify* it: several requirements ended up describing what the other project does rather than what this game needs, and one of them was wrong because of it.
+
+Draft 7 re-derives §12 from §2. `flick-dot`'s role is narrowed to what it is genuinely good for — the build and release pipeline, the three Android config plugins, and the Gradle/ccache configuration that was won by debugging. Everything else answers to the game.
+
+The substantive change is **storage**. Draft 6 specified a key-value store and then invented a staging-key-and-pointer-flip protocol to give it atomicity. That protocol was the tell: this game persists on every command, and asks real queries of its learning data. It wants a transactional, queryable store, and `expo-sqlite` is one dependency away. `TEC-032` now demands a transaction and forbids the hand-rolled dance.
+
+Copying also produced a dependency list with three holes — no localization, no audio, no billing — because the project it was copied from needs none of those and this one needs all three. `TEC-004` is now a table where every package names the requirement it serves and the milestone it arrives at. Changelog in §18.11.
 
 ---
 
@@ -115,7 +125,15 @@ The implementing developer and the AI coding agents working from the repo. It is
 
 **Story frame.** The city *Madinat al-Qalam* ("City of the Pen") has been robbed of its words by **the Hush**, a creeping silence. Ink-creatures (Hushlings) infest the districts. The player is a young scribe who restores speech by writing true sentences in the traveller's tongue — English — brought by a merchant caravan. Chapters are districts: **The Market** → **The Garden** → **The Observatory** → **The Grand Library**, where the Hush waits.
 
-**Why this stack.** The game is a card UI over a pure-function text engine — no physics, no 3D, no per-frame simulation. React Native's strengths (declarative screen layout, first-class RTL, a huge text/typography surface) line up with what this game actually is, and its one real weakness for games (per-frame JS work) is avoided because the only animation is the scoring readout, which plays from a pre-computed trace on the UI thread. The deciding factor is operational: `flick-dot` already carries a working Expo → GitHub Actions → signed APK/AAB → Play Store pipeline, and reusing it costs days where a second engine costs weeks.
+**Why this stack.** The game is a card UI over a pure-function text engine — no physics, no 3D, no per-frame simulation. Three properties of the game pick React Native rather than a game engine:
+
+- **It is a typography product.** Every screen is text in two scripts, one of which runs right to left, at four user-selectable sizes, with English fragments embedded inside Arabic sentences. Text layout and bidi are React Native's strongest suit and a game engine's weakest.
+- **Its cards must reflow, not scale.** `UI-041` and `UI-044` mean a card is live text in a vector frame, never a bitmap. That is a layout engine's job.
+- **Its engine has to run in three places.** The app, the content pipeline, and the server that verifies leaderboard submissions all execute the same grammar engine. In TypeScript that is one file imported three ways; in any engine-native language it is a reimplementation and a divergence risk.
+
+React Native's one real weakness for games — per-frame JS work — never arises, because the only animation is the scoring readout and it plays from a pre-computed trace on the UI thread (`TEC-035`).
+
+**What `flick-dot` contributes, and what it does not.** It contributes the shipping path: an Expo → GitHub Actions → signed APK/AAB → Play Store pipeline that already works, including the Android build's Gradle and ccache configuration, which was arrived at by debugging rather than by reading documentation. Reusing that is worth days. It contributes nothing to what this game *is*: a physics arcade game about a dot has no bearing on a bilingual grammar deckbuilder, and every product decision here is derived from §2 and §3 rather than from precedent. Where this document names `flick-dot`, it is naming the source of a build-pipeline detail — never a reason.
 
 ---
 
@@ -731,17 +749,37 @@ This solution depends on reading clause 2 as S5 and on `SCR-013`/`SCR-014`. It i
 
 ## 12. Technology, determinism and build (`TEC`)
 
-> This section was rewritten in full for draft 3. Draft 2 specified Godot 4.7 + GDScript; the project now runs on the Expo / React Native / TypeScript stack proven in `flick-dot`. See §18.7 for the changelog.
+> This section was rewritten in full for draft 3, when the project moved off Godot, and re-derived in draft 7 so that every choice here answers to the game in §2 rather than to precedent. See §18.7 and §18.11 for the changelogs.
 
 ### 12.1 Stack
 
-**TEC-001** (MUST, C) — The game MUST be built with **Expo (SDK 54 line) on React Native 0.81 / React 19**, in **TypeScript** with `strict: true`, using **expo-router** file-based routing. Package versions MUST track `flick-dot` unless a documented reason says otherwise. *(Supersedes draft 2's Godot 4.7 + GDScript.)*
+**TEC-001** (MUST, C) — The game MUST be built with **Expo** on React Native, in **TypeScript** with `strict: true` and `noUncheckedIndexedAccess: true`, using **expo-router** file-based routing. The project MUST start on the current Expo SDK and upgrade on **its own cadence**, decided by this project's needs. It MUST NOT be version-locked to any other project. *(Supersedes draft 2's Godot 4.7 + GDScript, and draft 6's rule that versions track `flick-dot` — coupling two unrelated products' upgrade cycles buys nothing and costs a veto.)*
 
-**TEC-002** (MUST, C) — The app MUST run on **Hermes** with the **New Architecture** enabled (`newArchEnabled: true`) and the React Compiler experiment on, matching `flick-dot`'s `app.json`. *(Supersedes draft 2's Compatibility renderer.)*
+**TEC-002** (MUST, C) — The app MUST run on **Hermes** with the **New Architecture** enabled (`newArchEnabled: true`). Hermes is what makes `NFR-003`'s 50 ms analysis budget and `NFR-004`'s cold-start target reachable on the mid-range reference device; the New Architecture is what lets gesture and animation work stay off the JS thread (`TEC-035`). The React Compiler experiment SHOULD be enabled, and MUST be turned off without ceremony if it ever produces a correctness surprise — it is a convenience, not a foundation.
 
 **TEC-003** (MUST, D) — Type strictness MUST be enforced in CI: `tsc --noEmit` and `expo lint` MUST both pass on every pull request. The engine core MUST contain no `any`, no non-null assertion (`!`) and no `@ts-expect-error`; a lint rule MUST enforce this for `lib/engine/` and `lib/run/`.
 
-**TEC-004** (MUST, D) — The runtime dependency set MUST stay close to `flick-dot`'s: `expo`, `expo-router`, `expo-font`, `expo-haptics`, `expo-crypto`, `expo-splash-screen`, `expo-status-bar`, `expo-system-ui`, `react-native-gesture-handler`, `react-native-reanimated`, `react-native-safe-area-context`, `react-native-screens`, `react-native-svg`, `@react-native-async-storage/async-storage`. Adding a dependency outside this set is a decision to record, not a convenience. The server-side half of `flick-dot`'s dependency list (Express, Drizzle, `pg`) MUST stay out of the mobile bundle; it belongs to `server/` only (§12.9). `@tanstack/react-query` is the one exception — it is a client dependency, used for leaderboard state and nothing else (`TEC-074`).
+**TEC-004** (MUST, D) — Every runtime dependency MUST earn its place against a requirement in this document. The v1 set, with what each is for and when it arrives:
+
+| Package | Why this game needs it | Arrives |
+|---|---|---|
+| `expo`, `expo-router` | App shell and file-based routing (`UI-008`) | M0 |
+| `expo-font` | Bundled Cairo (`TEC-081`, `TEC-044`) | M0 |
+| `expo-localization` | Reading device locale to pick `ar` / `en` before first render (`TEC-060`, `TEC-061`) | M0 |
+| `react-native-gesture-handler`, `react-native-reanimated` | Card drag and the scoring animation, both on the UI thread (`UI-007`, `TEC-035`) | M0 |
+| `react-native-svg` | Cards and tiles are vector with live text (`UI-009`) | M0 |
+| `expo-sqlite` | Run state, command log, mastery and review schedule — transactional, queryable, incremental (`TEC-033`) | M1 |
+| `react-native-safe-area-context`, `react-native-screens` | Required by expo-router's navigation | M0 |
+| `expo-splash-screen`, `expo-status-bar`, `expo-system-ui` | Launch and system chrome | M0 |
+| `expo-haptics` | Card placement and commit feedback | M6 |
+| `expo-crypto` | The player's random identity UUID (`LB-020`) — cryptographic, never the seeded stream | M9 |
+| `expo-audio` | Ambients, SFX and the per-step scoring tones (`AUD-001`–`AUD-005`) | M6 |
+| `expo-iap` | The single non-consumable unlock (`TEC-046`, `BIZ-009`) | M5 |
+| `@tanstack/react-query` | Leaderboard reads, with the cached fallback `LB-051` requires | M9 |
+
+Anything outside this table is a decision to record in §18, not a convenience. The backend's dependencies (Express, Drizzle, `pg`) belong to `server/` and MUST NOT enter the mobile bundle (§12.9).
+
+**TEC-082** (MUST, D) — A dependency MUST NOT be added ahead of the milestone that needs it. An unused package in the bundle is weight (`NFR-010`) and a native module that nothing exercises is a build risk discovered at the worst moment.
 
 **TEC-005** (MUST, D) — Expo packages MUST be installed with `npx expo install` so SDK-compatible versions are picked, never with a bare `npm install`.
 
@@ -771,7 +809,7 @@ This solution depends on reading clause 2 as S5 and on `SCR-013`/`SCR-014`. It i
 
 **TEC-007** (MUST, D) — The engine core (`lib/engine/`, `lib/run/`, `lib/rng/`) MUST import nothing from React, React Native, Expo, Node built-ins or the DOM. An ESLint `no-restricted-imports` boundary rule MUST enforce this, and violating it MUST fail CI. This is what lets the same code run in the app, in `tools/` under Node and in the test runner.
 
-**TEC-008** (MUST, D) — Path aliases MUST be configured in `tsconfig.json`: `@/*` for the repo root (as in `flick-dot`) and `@engine/*` for `lib/engine/*`. Deep relative imports (`../../../`) across top-level folders MUST fail lint.
+**TEC-008** (MUST, D) — Path aliases MUST be configured in `tsconfig.json`: `@/*` for the repo root and `@engine/*` for `lib/engine/*`. Deep relative imports (`../../../`) across top-level folders MUST fail lint.
 
 **TEC-009** (MUST, D) — Every native or Expo capability MUST be reached through a single wrapper module in `lib/platform/`. No screen, component or engine file may import an Expo package directly. This is what keeps `TEC-040` (iOS later) cheap and makes the native surface auditable in one place.
 
@@ -811,9 +849,11 @@ This solution depends on reading clause 2 as S5 and on `SCR-013`/`SCR-014`. It i
 
 **TEC-031** (MUST, B) — Every gameplay feature MUST work offline, including playing the Daily Run. The app declares the network permission and uses it for exactly three things: the purchase flow (`BIZ-009`), leaderboard traffic (§13), and — if it ever ships — opt-in analytics (`BIZ-010`). Losing the network MUST degrade features, never block play (`LB-050`–`LB-053`).
 
-**TEC-032** (MUST, D) — Save writes MUST be atomic from the reader's point of view: write the new payload under a staging key, then flip a single pointer key to it, then delete the old payload. A kill at any point MUST leave either the previous save or the new one fully readable, never a partial one.
+**TEC-032** (MUST, D) — Save writes MUST be atomic from the reader's point of view: a kill at any point MUST leave either the previous state or the new one fully readable, never a partial one. This MUST be achieved with a **database transaction**, not with an application-level protocol of staging keys and pointer flips. Inventing an atomicity dance on top of a store that has no transactions is how this requirement gets quietly broken later.
 
-**TEC-033** (MUST, D) — Saves MUST be stored in `AsyncStorage` through `lib/persistence/` only, under a documented key namespace, with an explicit integer `schemaVersion` in the payload and a registered migration per version step (`RUN-050`).
+**TEC-033** (MUST, D) — Local state MUST live in **SQLite** (`expo-sqlite`), reached only through `lib/persistence/`, with an explicit integer `schemaVersion` and a registered migration per version step (`RUN-050`).
+
+SQLite is chosen from what this game stores, not from habit. Three things decide it: `TEC-034` requires persisting on **every command**, and rewriting a whole JSON document per card placement is both wasteful and the source of the partial-write risk `TEC-032` exists to prevent; the learning layer asks *queries* — which of 600 words are due for review (`LRN-012`, `LRN-015`) — rather than reading one blob; and a transaction gives `TEC-032` for free. A key-value store would meet none of the three and would have to have an atomicity protocol written on top of it by hand.
 
 **TEC-034** (MUST, D) — The app MUST persist enough state on every command (or on a short debounce) that Android killing the process mid-encounter loses at most the last uncommitted interaction. Restoration MUST be verified by an automated test that loads a saved payload into a fresh engine instance and compares state hashes.
 
@@ -825,9 +865,9 @@ This solution depends on reading clause 2 as S5 and on `SCR-013`/`SCR-014`. It i
 
 **TEC-040** (MUST, B) — Nothing in the architecture may block a later iOS build: no Android-only module outside `lib/platform/`, and no platform-specific code outside it.
 
-**TEC-041** (MUST, D) — The three Expo config plugins from `flick-dot` MUST be carried over and kept in `plugins/`: release signing from environment variables, Gradle Play Publisher wiring, and ABI restriction to `armeabi-v7a,arm64-v8a`. Keystores, service-account keys and passwords MUST NEVER be committed; they MUST arrive as GitHub secrets decoded at build time.
+**TEC-041** (MUST, D) — Three Expo config plugins MUST live in `plugins/`: release signing read from environment variables, Gradle Play Publisher wiring, and ABI restriction to `armeabi-v7a,arm64-v8a` (x86 is emulator-only and doubles native compile time). Keystores, service-account keys and passwords MUST NEVER be committed; they MUST arrive as GitHub secrets decoded at build time. These are product-agnostic and are taken from `flick-dot` unchanged, which is the whole reason to take them.
 
-**TEC-042** (MUST, D) — Android `versionCode` MUST be derived from the release tag (`vX.Y.Z` → `X*10000 + Y*100 + Z`) at build time, as in `flick-dot`, so every Play upload is monotonic with no manual bookkeeping.
+**TEC-042** (MUST, D) — Android `versionCode` MUST be derived from the release tag (`vX.Y.Z` → `X*10000 + Y*100 + Z`) at build time, so every Play upload is monotonic with no manual bookkeeping.
 
 **TEC-043** (MUST, D) — `app.json` MUST declare: name "Word Rogue", slug `word-rogue`, Android package `com.moirisgames.wordrogue`, portrait orientation, `newArchEnabled: true`, typed routes, and the adaptive-icon set.
 
@@ -849,9 +889,11 @@ This solution depends on reading clause 2 as S5 and on `SCR-013`/`SCR-014`. It i
 
 **TEC-053** (MUST, D) — CI MUST run on every pull request and every push to `main`, on Node 22, and MUST include: `npm ci`, lint, typecheck, unit tests, the golden-corpus run, content validation, and the engine performance benchmark (`TST-024`). Any failure MUST block merge.
 
-**TEC-054** (MUST, D) — Repository hygiene MUST match `flick-dot`: `lefthook` pre-commit lint on staged files, `commitlint` with conventional commits, `release-please` driving version bumps and the changelog from commit messages, and a `.gitattributes` forcing LF so a Windows checkout does not rewrite the tree.
+**TEC-054** (MUST, D) — Repository hygiene MUST include: `lefthook` pre-commit lint on staged files, `commitlint` with conventional commits, `release-please` driving version bumps and the changelog from commit messages, and a `.gitattributes` forcing LF so a Windows checkout does not rewrite the whole tree.
 
-**TEC-055** (MUST, D) — The release path MUST be: conventional commits → `release-please` opens a release PR → merging it tags `vX.Y.Z` → the Android workflow builds the signed APK (attached to the GitHub Release) and the AAB (published to the Play Store **internal** track) in a single Gradle invocation, with Gradle and ccache caching as in `flick-dot`.
+**TEC-055** (MUST, D) — The release path MUST be: conventional commits → `release-please` opens a release PR → merging it tags `vX.Y.Z` → the Android workflow builds the signed APK (attached to the GitHub Release) and the AAB (published to the Play Store **internal** track) in **one** Gradle invocation, so the native C++ compile is shared rather than done twice.
+
+**TEC-083** (MUST, D) — The Android workflow's Gradle and ccache configuration MUST be taken from `flick-dot` as-is, including `CCACHE_COMPILERCHECK=content` and `CCACHE_BASEDIR`. These settings were arrived at by diagnosing a 0%-hit-rate cache, not by reading documentation, and re-deriving them costs hours for an identical answer. This is the single place where copying is the reasoned choice.
 
 **TEC-056** (MUST, D) — The test runner MUST be **Vitest**, running in a Node environment against the engine core, the run loop, the RNG, persistence serialisation and the data schemas. Component and screen tests are out of v1 scope; the checks in `TST-040`–`TST-042` cover the UI instead.
 
@@ -872,8 +914,10 @@ This solution depends on reading clause 2 as S5 and on `SCR-013`/`SCR-014`. It i
 ### 12.9 Backend service (required)
 
 > Draft 3 made this optional, justified only by the Play Store's hosted-privacy-policy requirement. The leaderboard (§13) makes it load-bearing. It is still deployed and versioned separately from the game, and the game still runs without it.
+>
+> This backend has one job no other service in the studio has: **it runs the game's grammar engine**. A submission is verified by replaying it, which makes the server a second execution environment for `lib/engine/` rather than a CRUD API in front of a scores table. That is what drives the shape below — a queue and a worker, not a single request-handling process.
 
-**TEC-070** (MUST, C) — A backend service MUST be deployed, reusing `flick-dot`'s pattern verbatim: **Express 5 + Drizzle ORM + PostgreSQL**, containerised, published to GHCR by GitHub Actions and run behind Traefik on the VPS via `docker compose`.
+**TEC-070** (MUST, C) — A backend service MUST be deployed: **Express + Drizzle ORM + PostgreSQL**, containerised, published to GHCR by GitHub Actions and run behind Traefik via `docker compose`. Postgres rather than a lighter store because verification is a durable work queue with retries and ordering (`LB-033`), not a scoreboard. The container and deployment mechanics are the same shape as the studio's other service, and that similarity is worth keeping for operational reasons only — the application inside it has nothing in common.
 
 **TEC-079** (MUST, C) — The **API** and the **verification worker** MUST be separate services from day one, even on a single host, with an explicit CPU limit on the worker. Verification replays whole runs and is the only CPU-heavy thing in the stack; keeping it separable means it can be throttled or moved to its own machine without a rewrite, and cannot starve anything it shares a host with.
 
@@ -885,13 +929,13 @@ This solution depends on reading clause 2 as S5 and on `SCR-013`/`SCR-014`. It i
 
 **TEC-073** (MUST, D) — The server MUST import the engine from `lib/engine/` directly, as a source dependency, and MUST NOT hold a second copy, a port, or a compiled snapshot of it (`LB-032`).
 
-**TEC-074** (MUST, D) — All server state on the client MUST go through `@tanstack/react-query`. `AsyncStorage` MUST hold only local game state plus the pending-submission queue (`LB-050`) — never a cache of server data.
+**TEC-074** (MUST, D) — All server state on the client MUST go through `@tanstack/react-query`. The local database MUST hold game state and the pending-submission queue (`LB-050`); it MUST NOT become a hand-rolled cache of server data.
 
-**TEC-075** (MUST, D) — The HTTP surface MUST be limited to: a health endpoint, country detection, leaderboard read and submit, and the admin endpoints of `LB-042`, gated by a shared-secret header as in `flick-dot`. Every other route MUST be a static page.
+**TEC-075** (MUST, D) — The HTTP surface MUST be limited to: a health endpoint, country detection, leaderboard read and submit, and the moderation endpoints of `LB-042` behind a shared-secret header. Every other route MUST be a static page. The service MUST NOT serve app bundles, update manifests or any other client payload — the app ships through the Play Store and nowhere else.
 
 **TEC-076** (MUST, D) — The service MUST also serve the landing page and the **privacy policy** the Play Store listing requires.
 
-**TEC-077** (MUST, D) — Deployment MUST be gated on a health check: pull the tagged image, recreate, wait for healthy, fail the deploy if it does not become healthy — `flick-dot`'s `deploy.sh` behaviour.
+**TEC-077** (MUST, D) — Deployment MUST be gated on a health check: pull the tagged image, recreate, wait for healthy, and fail the deploy if it does not become healthy within a bounded time.
 
 **TEC-078** (MUST, D) — The backend MUST NOT be required to build, test or run the game. `npm run typecheck`, the test suite and the Android build MUST all pass with `server/` absent.
 
@@ -911,7 +955,7 @@ This solution depends on reading clause 2 as S5 and on `SCR-013`/`SCR-014`. It i
 
 **LB-003** (MUST, C) — Daily Best Sentence MUST rank the highest-scoring single Breath committed during that day's Daily Run, not a sentence built anywhere else. The Workshop (`LRN-040`) MUST NOT feed any board.
 
-**LB-004** (MUST, D) — Every board MUST be viewable **global or country-filtered**, and **daily or all-time**, following `flick-dot`'s leaderboard shape.
+**LB-004** (MUST, D) — Every board MUST be viewable **global or country-filtered**, and for **today** or for the **current season** (`LB-038`). Country filtering matters more here than it would for most games: the audience is concentrated in a handful of Arabic-speaking countries, so a global board alone would read as a single crowd, while a country board gives most players a table they can place in.
 
 **LB-005** (MUST, D) — One entry per player per board per day. A better score MUST replace the player's previous entry rather than adding a row.
 
@@ -939,7 +983,7 @@ This cap exists for board integrity, **not** to limit play. The daily seed is fi
 
 ### 13.3 Identity
 
-**LB-020** (MUST, D) — Player identity MUST be anonymous: a random UUID generated on device, plus a player-chosen display name of at most 20 characters. No account, no email, no sign-in, no third-party identity provider. This is `flick-dot`'s `lib/player.ts` pattern, reused.
+**LB-020** (MUST, D) — Player identity MUST be anonymous: a random UUID generated on device, plus a handle generated per `LB-021`. No account, no email, no sign-in, no third-party identity provider. A learning game whose audience includes teenagers has no business collecting identity it does not need, and the leaderboard needs none.
 
 **LB-021** (MUST, C) — Display names MUST be **generated from an authored pool**, not typed. The player MUST be offered a scribe-styled handle assembled from approved in-world word lists, rerollable until they are happy with it, and MUST be able to reroll later. Free-text display names MUST NOT ship in v1.
 
@@ -979,7 +1023,7 @@ Rationale: free text is the only genuinely open moderation surface in this game,
 
 **LB-044** (MUST, C) — The word list MUST be audited for unfortunate combinations as part of content acceptance (`TST-011`), and any phrase found MUST be added to the `LB-041` denylist in `data/`, never patched in code.
 
-**LB-042** (MUST, D) — Reported entries MUST be hideable from an admin view without a deployment, following `flick-dot`'s admin-feedback pattern.
+**LB-042** (MUST, D) — Reported entries MUST be hideable from a moderation view without a deployment, and the action MUST be reversible.
 
 **LB-043** (MUST, D) — A published sentence and a display name are the **only** player-authored content that may leave the device. Save data, the learning profile, the command log's contents beyond verification, and any free-text field MUST NOT be published.
 
@@ -1144,7 +1188,7 @@ Derived from the build order (`TEC-050`). Each milestone ends with its acceptanc
 | M8 | Full content (600 words) + balance | `TST-010`, `TST-011`, `TST-030` green |
 | M9 | Leaderboard: backend, identity, submission queue, server-side verification | `TST-050`–`TST-053` green; a forged submission is rejected |
 
-M0 is new in draft 3: on this stack the scaffold and the release pipeline are a known, finite piece of work that `flick-dot` has already solved, and doing it first means every later milestone ships to a device.
+M0 is new in draft 3: the scaffold and the release pipeline are a known, finite piece of work, and doing them first means every later milestone can reach a real device the day it is finished.
 
 ---
 
@@ -1178,7 +1222,7 @@ All sixteen gaps raised in draft 1 have been decided and written into the requir
 
 | Was | Decision | Requirement |
 |---|---|---|
-| Engine and language | Expo SDK 54 / React Native 0.81 / React 19 / TypeScript strict, expo-router, Hermes, New Architecture — the `flick-dot` stack | `TEC-001`, `TEC-002` |
+| Engine and language | Expo / React Native / React / TypeScript strict, expo-router, Hermes, New Architecture | `TEC-001`, `TEC-002` |
 | Engine implementations | One TypeScript implementation, framework-free, shared by the app, the tools and the tests | `ENG-005`, `ENG-006` |
 | Corpus role | The golden corpus is the contract, replacing the two-implementation cross-check | `ENG-006`, `TST-004` |
 | Billing | `expo-iap` (OpenIAP), no RevenueCat, entitlement cached locally | `TEC-046`, `BIZ-009` |
@@ -1193,7 +1237,7 @@ All sixteen gaps raised in draft 1 have been decided and written into the requir
 | Which boards | Daily Run **and** Daily Best Sentence, both off the same daily seed | `LB-001` |
 | Daily Run scope | **Chapter 1 only**, so free players compete on equal terms and the unlock never buys rank | `LB-002`, `BIZ-013` |
 | Anti-cheat | Server-side replay of seed + command log through the same engine file | `LB-030`–`LB-032` |
-| Backend | Required, not optional: Express + Drizzle + Postgres + Docker + Traefik, per `flick-dot` | §12.9 |
+| Backend | Required, not optional: Express + Drizzle + Postgres + Docker + Traefik | §12.9 |
 | Play time | **Never limited.** No energy, cooldowns, session timers or play quotas, and no screen-time advice | `BIZ-014`, `BIZ-015` |
 | Ranked attempts | 2 per day, auto-submitted — a board rule, not a play limit | `LB-012`, `LB-014` |
 | After attempts | Unlimited **unranked** replays of the same seed; no lockout, no countdown, no "come back tomorrow" | `LB-015`, `LB-016` |
@@ -1343,4 +1387,28 @@ Draft 6 closes decisions; it does not add features. Seventeen items moved from r
 
 ---
 
-*End of SRS v1 draft 6.*
+### 18.11 Changelog: draft 6 → draft 7
+
+Re-derives the technology section from the game's own requirements. No design, number, board or content requirement changed.
+
+| Requirement | Draft 6 | Draft 7 |
+|---|---|---|
+| §2 "Why this stack" | Led with the reusable pipeline | Leads with the game: a typography product, cards that reflow, one engine running in three places |
+| `TEC-001` | Versions track `flick-dot` | Own upgrade cadence; version-locking to another project is forbidden |
+| `TEC-002` | "matching `flick-dot`'s app.json" | Hermes and New Architecture justified by `NFR-003`, `NFR-004` and `TEC-035`; React Compiler demoted to a convenience |
+| `TEC-004` | A list copied from another project | A table: every package names its requirement and its milestone. Adds `expo-localization`, `expo-audio`, `expo-iap`, `expo-sqlite` — all missing because the source project needs none of them |
+| `TEC-082` | — | **new**: no dependency lands before the milestone that needs it |
+| `TEC-032` | Staging key, pointer flip, delete old | A database transaction; the hand-rolled protocol is explicitly forbidden |
+| `TEC-033` | AsyncStorage | **SQLite**, argued from per-command writes, review queries, and transactions |
+| `TEC-074` | AsyncStorage holds the queue | The local database holds it |
+| `TEC-070`, §12.9 | "reusing `flick-dot`'s pattern verbatim" | The backend described on its own terms: it runs the grammar engine, so it is a queue and a worker, not a CRUD API |
+| `TEC-075` | Shared-secret header "as in `flick-dot`" | Same surface, plus an explicit ban on serving app bundles or update manifests |
+| `TEC-083` | — | **new**: the Gradle/ccache settings are copied deliberately, and the requirement says why |
+| `TEC-041`, `TEC-042`, `TEC-054`, `TEC-055`, `TEC-077`, `TEC-008` | Stated as parity with another repo | Stated as choices, with their reasons |
+| `LB-004` | "following `flick-dot`'s leaderboard shape" | Today or current season; country filtering justified by where the audience actually is |
+| `LB-020` | "`flick-dot`'s `lib/player.ts`, reused" | Anonymous identity justified by the audience including minors |
+| `LB-042` | "`flick-dot`'s admin-feedback pattern" | A reversible moderation action |
+
+---
+
+*End of SRS v1 draft 7.*
