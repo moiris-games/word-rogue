@@ -1,6 +1,6 @@
 # Word Rogue — Software Requirements Specification (v1)
 
-**Status:** Draft 5 · **Date:** 2026-09-20 · **Owner:** Khaled AbuShqear
+**Status:** Draft 6 · **Date:** 2026-09-20 · **Owner:** Khaled AbuShqear
 **Source of truth for:** the v1 Android release of Word Rogue
 **Derived from:** `docs/word-rogue-brief.md` (concept brief)
 **Reference implementation for stack and tooling:** the `flick-dot` repo (`moiris-games/flick-dot`)
@@ -69,6 +69,12 @@ One product decision, and its consequences: **Word Rogue never limits how long a
 The daily leaderboard's attempt cap survives, but as what it always was: a **board rule**, not a play limit. Two ranked attempts, auto-submitted, then unlimited unranked replays of the same seed and no closed door anywhere (`LB-012`–`LB-016`). The cap exists because a fixed seed plus uncapped retries makes brute force optimal, which would rank players by spare time rather than skill — the wrong answer for an audience of students and working learners.
 
 Draft 5 also folds in the draft-4 recommendations: generated handles instead of free-text names, the closed card vocabulary as its own moderation filter, engine-compat seasons, a split API and verification worker, and vector cards. Changelog in §18.9.
+
+### 0.7 What changed in draft 6
+
+Nothing new was designed. Seventeen decisions that had been sitting as recommendations were made, and the document now says what the game is rather than what it might be. Six new requirements carry choices that previously had nowhere to live — Ink Level scaling, the type family, the Satchel archetypes, the seal authoring passes, the commissioned art scope, and a property-based fuzzer that replaces the bug-catching the second engine implementation would have given.
+
+What remains open is only what evidence can settle: the balance numbers, the daily attempt count, and the visual direction. Changelog in §18.10.
 
 ---
 
@@ -266,6 +272,8 @@ S1 and S2 are forced by the worked examples (only one sensible factorisation eac
 
 **DATA-062** (MUST, B) — `data/seals.json` MUST define ≈44 seals. Each MUST declare its effect as data the scorer can apply (not as a script), its shop cost, and its rarity.
 
+**DATA-071** (MUST, C) — Seals MUST be authored in two passes: **at least 12 by the end of M5**, covering all four effect shapes of `RUN-031`, and the full ≈44 by M8. The simulator MUST be used between the two passes to establish which shapes are worth expanding, so the remaining seals are authored against evidence rather than guesswork.
+
 **DATA-063** (MUST, B) — `data/scrolls.json` MUST define 20 one-shot consumables; `data/tablets.json` MUST define 14 tablets, each naming the structure it levels.
 
 **DATA-064** (MUST, B) — `data/enemies.json` MUST define 16 enemies. Each MUST declare: `id`, tier (Wanderer / Hushling / Warden), chapter, Silence value, Ink reward, and an optional Constraint.
@@ -273,6 +281,8 @@ S1 and S2 are forced by the worked examples (only one sensible factorisation eac
 **DATA-069** (MUST, C) — The 16 enemies MUST be distributed 4 per chapter: **2 Wanderer variants, 1 Hushling, 1 Warden**. Exactly one of the two Wanderer variants MUST be selected per run from the enemy RNG stream. The Hushling and Warden of a chapter are fixed, so each district's boss stays iconic.
 
 **DATA-065** (MUST, B) — `data/satchels.json` MUST define 4 starting decks.
+
+**DATA-070** (MUST, C) — The 4 Satchels MUST be **pedagogical archetypes, not stat archetypes**: Balanced, Verb-heavy, Description-heavy (nouns and adjectives), and Question-words. Each MUST bias which structures come easily rather than how much raw Weight the deck carries, so choosing a Satchel chooses what the player practises. They MUST be authored at M5.
 
 **DATA-066** (MUST, B) — `data/codex.json` MUST define 52 pages: 14 structures, 7 tones, contractions, and the 30 error codes.
 
@@ -557,6 +567,8 @@ This solution depends on reading clause 2 as S5 and on `SCR-013`/`SCR-014`. It i
 
 **RUN-040** (MUST, B) — Winning a run MUST unlock harder **Ink Levels** (difficulty tiers).
 
+**RUN-044** (MUST, C) — Ink Levels MUST scale by **Silence multiplier alone**: ×1.25 per tier over the base ladder of `ENC-016`, for **5 tiers** total. Constraints MUST NOT stack across tiers and the starting deck MUST NOT be penalised. One number keeps the tiers simulator-tunable; stacked constraints are a combinatorial balance problem, and deck penalties punish exactly the learners this game exists for.
+
 **RUN-041** (MUST, B) — Winning MUST unlock new starting decks (**Satchels**), up to the 4 defined in `DATA-065`.
 
 **RUN-042** (MUST, B) — Learned words, unlocked Codex pages, and unlocked Satchels MUST persist across runs.
@@ -655,7 +667,7 @@ This solution depends on reading clause 2 as S5 and on `SCR-013`/`SCR-014`. It i
 
 **UI-008** (MUST, D) — Screens MUST be file-based routes under `app/`, one screen per file, with all game logic imported from the engine core — a route file holds layout and dispatch, never rules.
 
-**UI-009** (MUST, D) — Word cards and toolbelt tiles MUST be rendered as vector and live text — theme tokens plus `react-native-svg` — never as raster images. This is forced by `UI-041` (four text sizes) and `UI-044` (no baked text): a card bitmap cannot reflow at the largest text step or swap language. Commissioned art therefore covers enemies and district backdrops; cards are code.
+**UI-009** (MUST, C) — Word cards and toolbelt tiles MUST be rendered as vector and live text — theme tokens plus `react-native-svg` — never as raster images. This is forced by `UI-041` (four text sizes) and `UI-044` (no baked text): a card bitmap cannot reflow at the largest text step or swap language. Commissioned art therefore covers enemies and district backdrops; cards are code.
 
 ### 10.2 RTL and bidirectional text
 
@@ -819,7 +831,9 @@ This solution depends on reading clause 2 as S5 and on `SCR-013`/`SCR-014`. It i
 
 **TEC-043** (MUST, D) — `app.json` MUST declare: name "Word Rogue", slug `word-rogue`, Android package `com.moirisgames.wordrogue`, portrait orientation, `newArchEnabled: true`, typed routes, and the adaptive-icon set.
 
-**TEC-044** (MUST, D) — Fonts MUST be bundled as local files loaded with `expo-font` — not fetched from a font CDN and not pulled from an `@expo-google-fonts` package — so `NFR-009`'s single bilingual variable family and the 5 MB data-and-fonts budget are both enforceable.
+**TEC-044** (MUST, C) — Fonts MUST be bundled as local files loaded with `expo-font` — not fetched from a font CDN and not pulled from an `@expo-google-fonts` package — so `NFR-009`'s single bilingual variable family and the 5 MB data-and-fonts budget are both enforceable.
+
+**TEC-081** (MUST, C) — The type family MUST be **Cairo** — variable, covering Arabic and Latin, OFL — bundled as a local variable font file. Its Latin quality at the game's sizes MUST be judged on a device at M6; if it is rejected there, the replacement MUST also be a single variable family covering both scripts (`NFR-009`), never a Latin family paired with an Arabic one.
 
 **TEC-045** (MUST, D) — The app MUST be developed and tested as an Expo **development build**, not in Expo Go, because billing (`BIZ-009`) is a native module. `npx expo prebuild --platform android` MUST be reproducible from a clean checkout; the generated `android/` directory MUST NOT be committed.
 
@@ -847,13 +861,13 @@ This solution depends on reading clause 2 as S5 and on `SCR-013`/`SCR-014`. It i
 
 **TEC-060** (MUST, D) — The app MUST ship exactly two locales, `ar` (default) and `en`, loaded from `lib/i18n/`. There MUST be no runtime string concatenation of translated fragments; every user-visible string MUST be a single keyed entry with named interpolations.
 
-**TEC-061** (MUST, D) — Layout direction MUST be applied once, before the first render, from the selected locale (`I18nManager.allowRTL` / `forceRTL`). LTR islands — the Sentence Line, the hand, the toolbelt tray and any English example — MUST be forced with the `direction: 'ltr'` style on their container rather than by conditionally flipping `flexDirection` per screen. This MUST be verified on a physical Android device at M6, since direction handling is the one part of this stack with no precedent in `flick-dot`.
+**TEC-061** (MUST, C) — Layout direction MUST be applied once, before the first render, from the selected locale (`I18nManager.allowRTL` / `forceRTL`). LTR islands — the Sentence Line, the hand, the toolbelt tray and any English example — MUST be forced with the `direction: 'ltr'` style on their container rather than by conditionally flipping `flexDirection` per screen. Direction handling is the one part of this stack with no precedent in `flick-dot`, so it MUST be proven twice: a throwaway spike on a physical Android device during **M0** — one Arabic screen, one LTR island, one embedded English fragment — and the full check of `TST-043` at M6. The M0 spike MUST happen before the scaffold is considered complete.
 
 **TEC-062** (MUST, D) — Any English fragment embedded in an Arabic string MUST be wrapped in Unicode bidi isolates (U+2066 LRI … U+2069 PDI) by a single i18n helper. Raw interpolation of an English word into an Arabic template string MUST fail lint.
 
 **TEC-063** (MUST, D) — Styles MUST use the direction-relative properties (`marginStart`, `paddingEnd`, `start`, `end`, `textAlign: 'left' | 'right'` only inside an explicitly-LTR island). `marginLeft`, `marginRight`, `left` and `right` MUST fail lint outside `lib/i18n/` and the LTR-island components.
 
-**TEC-064** (SHOULD, D) — Changing the app language MUST take effect on the whole UI. Because `forceRTL` needs a reload, the app MUST either apply the change on next launch with a clear in-app message, or reload itself. Which of the two, and the reload mechanism if the second, is an open decision (§18.6).
+**TEC-064** (MUST, C) — Changing the app language MUST take effect on the whole UI at the **next launch**, and the app MUST say so plainly at the moment of the change. The app MUST NOT reload itself for this, and MUST NOT add a dependency to do so. Language is changed approximately once in a player's lifetime; it does not justify the machinery.
 
 ### 12.9 Backend service (required)
 
@@ -861,9 +875,9 @@ This solution depends on reading clause 2 as S5 and on `SCR-013`/`SCR-014`. It i
 
 **TEC-070** (MUST, C) — A backend service MUST be deployed, reusing `flick-dot`'s pattern verbatim: **Express 5 + Drizzle ORM + PostgreSQL**, containerised, published to GHCR by GitHub Actions and run behind Traefik on the VPS via `docker compose`.
 
-**TEC-079** (MUST, D) — The **API** and the **verification worker** MUST be separate services from day one, even on a single host, with an explicit CPU limit on the worker. Verification replays whole runs and is the only CPU-heavy thing in the stack; keeping it separable means it can be throttled or moved to its own machine without a rewrite, and cannot starve anything it shares a host with.
+**TEC-079** (MUST, C) — The **API** and the **verification worker** MUST be separate services from day one, even on a single host, with an explicit CPU limit on the worker. Verification replays whole runs and is the only CPU-heavy thing in the stack; keeping it separable means it can be throttled or moved to its own machine without a rewrite, and cannot starve anything it shares a host with.
 
-**TEC-080** (MUST, D) — Word Rogue's stack MUST be its own compose project with its own database, sharing only the Traefik proxy network with anything else on the host. No schema, volume or container may be shared with another product.
+**TEC-080** (MUST, C) — Word Rogue's backend MUST run on the **existing VPS**, as its own compose project with its own database, sharing only the Traefik proxy network with anything else on the host. No schema, volume or container may be shared with another product. The isolation of `TEC-079` and this requirement is what makes sharing a host safe, and moving to a dedicated host later a configuration change rather than a migration.
 
 **TEC-071** (MUST, D) — The service MUST live in `server/`, with the database schema in `shared/schema.ts` so client and server share one set of types. `shared/` MUST NOT import anything from `app/` or `components/`.
 
@@ -927,11 +941,11 @@ This cap exists for board integrity, **not** to limit play. The daily seed is fi
 
 **LB-020** (MUST, D) — Player identity MUST be anonymous: a random UUID generated on device, plus a player-chosen display name of at most 20 characters. No account, no email, no sign-in, no third-party identity provider. This is `flick-dot`'s `lib/player.ts` pattern, reused.
 
-**LB-021** (MUST, D) — Display names MUST be **generated from an authored pool**, not typed. The player MUST be offered a scribe-styled handle assembled from approved in-world word lists, rerollable until they are happy with it, and MUST be able to reroll later. Free-text display names MUST NOT ship in v1.
+**LB-021** (MUST, C) — Display names MUST be **generated from an authored pool**, not typed. The player MUST be offered a scribe-styled handle assembled from approved in-world word lists, rerollable until they are happy with it, and MUST be able to reroll later. Free-text display names MUST NOT ship in v1.
 
 Rationale: free text is the only genuinely open moderation surface in this game, and Arabic is the hard half of it — dialect variation across Levantine, Gulf and Egyptian, plus **Arabizi** (Arabic written in Latin letters and digits), defeats most Arabic-script filters. Generated handles remove the surface rather than police it, and they fit Madinat al-Qalam.
 
-**LB-024** (MUST, D) — The generated-handle pool MUST live in `data/` under the same schema and validation rules as every other content file (`DATA-002`), and MUST be authored in both Arabic and English.
+**LB-024** (MUST, C) — The generated-handle pool MUST live in `data/` under the same schema and validation rules as every other content file (`DATA-002`), and MUST be authored in both Arabic and English.
 
 **LB-022** (MUST, D) — Country MUST be derived server-side from the request IP. The app MUST NOT request a location permission and MUST NOT use GPS for this.
 
@@ -951,19 +965,19 @@ Rationale: free text is the only genuinely open moderation surface in this game,
 
 **LB-035** (MUST, D) — Submissions MUST be rate-limited per player id and per IP.
 
-**LB-036** (MUST, D) — The engine MUST carry a **scoring-compatibility version**, separate from the app version, bumped only when a change alters scoring output. Changes that do not alter output — new error codes, reworded notes, performance work — MUST NOT bump it. Every entry MUST record the compat version that verified it, and a board MUST never mix scores produced by compat versions that disagree.
+**LB-036** (MUST, C) — The engine MUST carry a **scoring-compatibility version**, separate from the app version, bumped only when a change alters scoring output. Changes that do not alter output — new error codes, reworded notes, performance work — MUST NOT bump it. Every entry MUST record the compat version that verified it, and a board MUST never mix scores produced by compat versions that disagree.
 
-**LB-037** (MUST, D) — Each daily board MUST be pinned to the compat version in force when its UTC day opened. A deployment mid-day MUST NOT change that day's scoring, and no entry may ever be re-scored retroactively.
+**LB-037** (MUST, C) — Each daily board MUST be pinned to the compat version in force when its UTC day opened. A deployment mid-day MUST NOT change that day's scoring, and no entry may ever be re-scored retroactively.
 
-**LB-038** (MUST, D) — The all-time board MUST be scoped to a compat version. When the compat version bumps, the current all-time board MUST be archived read-only as a completed **season** and a new one started. A season MUST NOT be monetised, gated, or tied to any reward that confers scoring power (`BIZ-013`).
+**LB-038** (MUST, C) — The all-time board MUST be scoped to a compat version. When the compat version bumps, the current all-time board MUST be archived read-only as a completed **season** and a new one started. A season MUST NOT be monetised, gated, or tied to any reward that confers scoring power (`BIZ-013`).
 
 ### 13.5 Sentence text and moderation
 
 **LB-040** (MUST, D) — Sentence text MUST NOT be transmitted by default. Publishing a sentence to the Best Sentence board MUST be a separate, explicit, per-submission opt-in — the score submits automatically, the text only on an affirmative tap. *(This is the one amendment to `BIZ-010`'s "sentence text never leaves the device"; see `BIZ-013`.)*
 
-**LB-041** (MUST, D) — A published sentence is built only from the authored card pool (`DATA-010`) and the fixed toolbelt tiles (`DATA-040`), so the vocabulary itself is the filter: it is curated at authoring time and the player cannot introduce a word. What MUST additionally be guarded is **combination** — a short authored denylist of phrases, checked server-side before publication — and every published sentence MUST be reportable by any player.
+**LB-041** (MUST, C) — A published sentence is built only from the authored card pool (`DATA-010`) and the fixed toolbelt tiles (`DATA-040`), so the vocabulary itself is the filter: it is curated at authoring time and the player cannot introduce a word. What MUST additionally be guarded is **combination** — a short authored denylist of phrases, checked server-side before publication — and every published sentence MUST be reportable by any player.
 
-**LB-044** (MUST, D) — The word list MUST be audited for unfortunate combinations as part of content acceptance (`TST-011`), and any phrase found MUST be added to the `LB-041` denylist in `data/`, never patched in code.
+**LB-044** (MUST, C) — The word list MUST be audited for unfortunate combinations as part of content acceptance (`TST-011`), and any phrase found MUST be added to the `LB-041` denylist in `data/`, never patched in code.
 
 **LB-042** (MUST, D) — Reported entries MUST be hideable from an admin view without a deployment, following `flick-dot`'s admin-feedback pattern.
 
@@ -1007,7 +1021,7 @@ Rationale: free text is the only genuinely open moderation surface in this game,
 
 **BIZ-010** (MUST, C) — If analytics is accepted, the collected event set MUST be limited to: `run_start`, `run_end`, `encounter_result`, `commit` (structure, tone, validity, error code, score bucket), `shop_purchase`, `codex_unlock`, `setting_changed`. No free text, no account, and a resettable random install id only. **Sentence text MUST never be collected as analytics** — the sole route by which a sentence may leave the device is the explicit opt-in of `LB-040`, and it MUST NOT be reused for any other purpose.
 
-**BIZ-011** (MUST, D) — No third-party analytics, attribution, crash-reporting or advertising SDK may be bundled in the v1 build. If the events of `BIZ-010` are collected at all, they MUST go to the backend of §12.9 and nowhere else. The recommendation of §18.5 is that v1 ships **no** analytics: the leaderboard already yields score distributions per seed, which is the signal that matters.
+**BIZ-011** (MUST, C) — **v1 MUST ship no analytics at all.** No third-party analytics, attribution, crash-reporting or advertising SDK may be bundled, and no event may be collected. The leaderboard already yields score distributions per seed, which is the signal that matters, and analytics is the likeliest thing to slip the release. `BIZ-006` and `BIZ-010` stand as the shape analytics MUST take **if** it ships after v1 — they are not a v1 commitment.
 
 **BIZ-013** (MUST, D) — The leaderboard MUST NOT be monetised in any form: no paid entry, no paid retry, no purchasable extra daily attempt, and no cosmetic tied to rank that confers scoring power. Rank MUST be earnable only by play (`BIZ-003`, `LB-002`).
 
@@ -1028,6 +1042,8 @@ Rationale: free text is the only genuinely open moderation surface in this game,
 **NFR-005** (MUST, D) — Installed size MUST stay under 150 MB.
 
 **NFR-009** (MUST, C) — The size budget MUST be allocated: ≤ 60 MB art (one texture atlas per chapter), ≤ 15 MB audio, ≤ 5 MB data and fonts. Text MUST be rendered with a **single variable font family covering both Arabic and Latin**, to avoid mixed-metric bidi defects.
+
+**NFR-013** (MUST, C) — Commissioned art scope for v1 MUST be exactly **16 enemies and 4 district backdrops**. Everything else — cards, tiles, seals, UI chrome, icons — MUST be built from theme tokens and vector primitives (`UI-009`). Art style and pipeline remain open (§18.6); the scope does not.
 
 **NFR-006** (MUST, D) — Memory use MUST stay under 400 MB during an encounter.
 
@@ -1061,6 +1077,8 @@ Rationale: free text is the only genuinely open moderation surface in this game,
 
 **TST-007** (MUST, D) — The corpus MUST be stored as data (JSON under `tests/corpus/`), not as hand-written test code, and MUST be executed by a single runner so that adding a case requires no code change.
 
+**TST-008** (MUST, C) — A **property-based fuzzer** MUST ship with the engine from M2: it MUST generate random legal Sentence Lines and assert the engine's invariants — never throws, always returns a verdict, a valid sentence never scores below its Mumble floor, the same input always returns byte-identical output, and the candidate search always terminates within its bound (`ENG-013`). This is what replaces the bug-catching-by-disagreement that draft 2's second implementation would have provided (§18.4).
+
 ### 16.2 Content acceptance
 
 **TST-010** (MUST, B) — Every example sentence in the word list MUST parse at its own chapter and pass the meaning check.
@@ -1085,7 +1103,7 @@ Rationale: free text is the only genuinely open moderation surface in this game,
 
 **TST-030** (MUST, B) — The balance simulator MUST report, per enemy and per Ink Level, the win rate of the greedy bot and the novice bot.
 
-**TST-031** (MUST, D) — Target bands for v1, to be confirmed by the balance pass: the **novice** bot clears Chapter 1 in ~70% of runs; the **greedy** bot clears a full run at base Ink Level in 25–35% of runs; every enemy has a non-zero win rate and none exceeds 95% under the greedy bot. These numbers are placeholders, but falsifiable ones — the simulator can disprove them, which "a meaningful fraction" could not.
+**TST-031** (MUST, C) — Target bands for v1, to be confirmed by the balance pass: the **novice** bot clears Chapter 1 in ~70% of runs; the **greedy** bot clears a full run at base Ink Level in 25–35% of runs; every enemy has a non-zero win rate and none exceeds 95% under the greedy bot. These numbers are placeholders, but falsifiable ones — the simulator can disprove them, which "a meaningful fraction" could not.
 
 ### 16.5 Accessibility and localisation acceptance
 
@@ -1167,7 +1185,7 @@ All sixteen gaps raised in draft 1 have been decided and written into the requir
 | Test runner | Vitest over the framework-free core; no component tests in v1 | `TEC-056` |
 | Release pipeline | Conventional commits → release-please → tag → signed APK on the Release + AAB to Play internal | `TEC-054`, `TEC-055` |
 
-### 18.3 Decided in drafts 4 and 5 (now `C`)
+### 18.3 Decided in drafts 4, 5 and 6 (now `C`)
 
 | Was | Decision | Requirement |
 |---|---|---|
@@ -1180,6 +1198,28 @@ All sixteen gaps raised in draft 1 have been decided and written into the requir
 | Ranked attempts | 2 per day, auto-submitted — a board rule, not a play limit | `LB-012`, `LB-014` |
 | After attempts | Unlimited **unranked** replays of the same seed; no lockout, no countdown, no "come back tomorrow" | `LB-015`, `LB-016` |
 
+**Draft 6** closed every remaining recommendation. The seventeen below were `D` in draft 5 and are binding now:
+
+| Decision | Requirement |
+|---|---|
+| Ink Levels scale by Silence multiplier alone, ×1.25 per tier, 5 tiers | `RUN-044` |
+| Type family is Cairo — one variable family covering Arabic and Latin | `TEC-081` |
+| Language change applies at next launch; no self-reload, no new dependency | `TEC-064` |
+| v1 ships **no analytics at all** | `BIZ-011` |
+| Seals authored in two passes: ≥12 by M5, ≈44 by M8, simulator between them | `DATA-071` |
+| Satchels are pedagogical archetypes: Balanced, Verb-heavy, Description-heavy, Question-words | `DATA-070` |
+| RTL proven twice — throwaway spike at M0, full check at M6 | `TEC-061` |
+| Display names generated from an authored pool; free text never ships | `LB-021`, `LB-024` |
+| The closed card vocabulary is the sentence filter; only a phrase denylist is added | `LB-041`, `LB-044` |
+| Engine scoring-compat version; daily boards pinned; all-time archived as seasons | `LB-036`–`LB-038` |
+| API and verification worker split, worker CPU-capped | `TEC-079` |
+| Backend runs on the existing VPS, own compose project and database | `TEC-080` |
+| Cards are vector and live text | `UI-009` |
+| Commissioned art scope is 16 enemies and 4 backdrops, nothing else | `NFR-013` |
+| Balance bands adopted as falsifiable placeholders | `TST-031` |
+| Property-based fuzzer ships with the engine from M2 | `TST-008` |
+| The 2,000-line `word-rogue-spec.md` is declared dead if it has not surfaced by the start of M1 | §18.5 |
+
 ### 18.4 The decisions worth revisiting
 
 These are commitments that will be felt, not number-filling:
@@ -1188,35 +1228,19 @@ These are commitments that will be felt, not number-filling:
 2. **Clauses give Weight but not Force** (`SCR-013`). This is what keeps S7 and S13 from dominating, and it is load-bearing for the 1,092 verification. Changing it invalidates `DATA-034`.
 3. **One engine implementation instead of two** (`ENG-005`). The dual GDScript/Python rule existed to catch bugs by disagreement. With one language that safety net is gone, and the corpus is carrying its weight alone — so `TST-002`'s rule (no bug fix without a new case) is now load-bearing rather than good practice. If engine bugs start slipping through to content, the cheapest restoration is a property-based fuzzer that generates random legal lines and asserts invariants, not a second hand-written implementation.
 
-### 18.5 Recommended dispositions, awaiting confirmation
+### 18.5 Recommended dispositions — all closed
 
-Each is written into the requirements as `D`. Confirming a row promotes it to `C`; rejecting one costs a small edit and nothing else.
+This section held thirteen recommendations through drafts 4 and 5. All were confirmed on 2026-09-20 and are now requirements; the table in §18.3 lists them with their IDs. Nothing is pending here.
 
-**From draft 3**
-
-- **The 2,000-line spec** — declare it dead unless it surfaces. A phantom document blocking reconciliation is worse than no document. This draft is the source of truth.
-- **Ink Level scaling** — Silence multiplier only, ×1.25 per tier, 5 tiers. One number the simulator tunes. Constraint stacking is a combinatorial balance problem; deck penalties punish exactly the learners the game exists for.
-- **Font** — **Cairo**: variable, covers Arabic and Latin, OFL. IBM Plex Sans Arabic appears to ship static-only, which fails `TEC-044`. Cairo's Latin quality must be judged on a device at M6 before it is locked.
-- **Language switch** — apply on next launch with a clear in-app message (`TEC-064`). No new dependency, and nobody switches language twice.
-- **Analytics** — cut from v1 (`BIZ-011`). The leaderboard already yields per-seed score distributions, which is the signal that matters, and analytics is the most likely thing to slip the release.
-- **Seals** — author 12 at M5 covering the four shapes of `RUN-031`, let the simulator show which shapes are fun, then author the rest at M8. `DATA-062` should read "≥12 at M5, ≈44 at M8".
-- **Satchels** — design as pedagogical archetypes rather than stat ones: Balanced, Verb-heavy, Description-heavy, Question-words. Each biases which structures come easily.
-- **RTL** — spike it in M0 on a real device: one Arabic screen, one LTR island, one embedded English fragment. Two hours. Do not meet this first at M6.
-
-**From draft 4**
-
-- **Moderation** — remove the surface instead of policing it. Generated handles (`LB-021`) kill free text; the closed card vocabulary means published sentences need only a phrase denylist (`LB-041`), not a general filter. This is what makes Best Sentence shippable without solving Arabic profanity detection.
-- **Engine versioning as seasons** — compat version separate from app version; daily boards pinned to the day they opened; all-time boards archived as seasons on a bump (`LB-036`–`LB-038`). Converts a migration problem into a feature players already understand.
-- **Backend topology** — same VPS, own compose project, own database, API and verification worker as separate services with a CPU cap on the worker (`TEC-079`, `TEC-080`).
-- **Art** — cards are vector and live text, forced by the text-size and no-baked-text rules (`UI-009`). Commission enemies first, district backdrops second.
-- **Balance bands** — falsifiable placeholders rather than adjectives (`TST-031`).
+One of them is not a requirement and lives only here: **`docs/word-rogue-spec.md`, the ~2,000-line specification referenced by the concept brief, is declared dead.** It has never been in the repo. If it has not surfaced by the day M1 starts, this document is the sole source of truth and the reference to it MUST be removed from the brief. A phantom document that might supersede the spec is worse than no document, because it makes every number here provisional.
 
 ### 18.6 Still genuinely open
 
-1. **Balance target bands.** `TST-031` now holds falsifiable numbers, but they are still guesses until the M4 simulator runs. Self-resolving; listed so it is not forgotten.
-2. **The ranked attempt count.** `LB-012` sets 2. This is measurable from the board itself without any analytics: if most players' best is their second attempt, 2 is right; if attempts 1 and 2 cluster, 1 is enough. Revisit after the first month.
-3. **Where the backend lives.** `TEC-080` says its own compose project; whether that shares the existing VPS or gets its own host is an operational call to make before M9.
-4. **Art direction.** Budget is set (`NFR-009`) and `UI-009` settles the cards. Style and pipeline for enemies and backdrops are unchosen; the font is recommended (§18.5) but not locked.
+Three items, all correctly blocked — none can be closed by argument, only by evidence.
+
+1. **Balance target band numbers.** `TST-031` holds falsifiable placeholders. Only the M4 simulator can confirm or disprove them. Blocked until M4.
+2. **The ranked attempt count.** `LB-012` sets 2. Verifiable from the board itself with no analytics: if most players' best score is their second attempt, 2 is right; if attempts 1 and 2 cluster, 1 is enough. Review after the first month of real play.
+3. **Art style and pipeline.** Scope is fixed (`NFR-013`), cards are settled (`UI-009`), the font is chosen (`TEC-081`). The visual direction itself needs deciding with someone who draws — it is not a thing to argue into a specification.
 
 ### 18.7 Changelog: draft 2 → draft 3
 
@@ -1296,4 +1320,27 @@ Draft 5 settles the play-time question and folds in the draft-4 flag recommendat
 
 ---
 
-*End of SRS v1 draft 5.*
+### 18.10 Changelog: draft 5 → draft 6
+
+Draft 6 closes decisions; it does not add features. Seventeen items moved from recommendation to requirement.
+
+| Requirement | Draft 5 | Draft 6 |
+|---|---|---|
+| `RUN-044` | — | **new**: Ink Level scaling, ×1.25 Silence per tier, 5 tiers |
+| `TEC-081` | — | **new**: Cairo as the type family |
+| `DATA-070` | — | **new**: the four Satchels as pedagogical archetypes |
+| `DATA-071` | — | **new**: seals authored in two passes with the simulator between |
+| `NFR-013` | — | **new**: commissioned art scope is 16 enemies, 4 backdrops |
+| `TST-008` | — | **new**: property-based fuzzer from M2, replacing the lost cross-check |
+| `TEC-061` | Device check at M6 | M0 spike **and** M6 check; `D` → `C` |
+| `TEC-064` | `SHOULD, D`, mechanism undecided | `MUST, C`: next launch, no self-reload |
+| `BIZ-011` | `D`, analytics deferred by recommendation | `C`: v1 ships no analytics at all |
+| `TEC-080` | `D`, host undecided | `C`: existing VPS, own compose project |
+| `TEC-044`, `TEC-079`, `UI-009`, `TST-031`, `LB-021`, `LB-024`, `LB-036`–`LB-038`, `LB-041`, `LB-044` | `D` | `C`, text unchanged |
+| §18.3 | Draft 4 and 5 decisions | Plus the seventeen closed in draft 6 |
+| §18.5 | 13 recommendations pending | All closed; holds only the dead-spec declaration |
+| §18.6 | 4 open | 3 open, each blocked on evidence rather than a decision |
+
+---
+
+*End of SRS v1 draft 6.*
