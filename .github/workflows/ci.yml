@@ -1,0 +1,73 @@
+name: CI
+
+# TEC-053: runs on every pull request and every push to main, on Node 22.
+# Any failure blocks merge.
+
+on:
+  pull_request:
+  push:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+
+      # The repo is at TEC-050 step 0 (scaffold + CI) — the Expo app does
+      # not exist yet, so there is nothing to install, lint or test and a
+      # plain `npm ci` would fail red on every PR. Once the scaffold lands
+      # (package-lock.json committed), every step below activates on its
+      # own. DELETE this step and the `if:` guards with that commit.
+      - name: Detect app scaffold
+        id: scaffold
+        run: |
+          if [[ -f package-lock.json ]]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No app scaffold yet (no package-lock.json) — skipping install, lint, typecheck and tests."
+          fi
+
+      - name: Setup Node
+        if: steps.scaffold.outputs.present == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install Dependencies
+        if: steps.scaffold.outputs.present == 'true'
+        run: npm ci
+
+      - name: Lint
+        if: steps.scaffold.outputs.present == 'true'
+        run: npm run lint
+
+      - name: Typecheck
+        if: steps.scaffold.outputs.present == 'true'
+        run: npm run typecheck
+
+      - name: Unit tests
+        if: steps.scaffold.outputs.present == 'true'
+        run: npm test
+
+      # TEC-023 / ENG-006: the corpus runner, content validation and the
+      # benchmark all import the shipped engine modules directly and run
+      # under tsx. Each exits non-zero on failure (TEC-057).
+      - name: Golden corpus
+        if: steps.scaffold.outputs.present == 'true'
+        run: npm run corpus
+
+      - name: Content validation
+        if: steps.scaffold.outputs.present == 'true'
+        run: npm run validate:content
+
+      - name: Engine benchmark
+        if: steps.scaffold.outputs.present == 'true'
+        run: npm run bench

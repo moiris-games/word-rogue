@@ -1,0 +1,27 @@
+# Git stores every text file with LF and checks it out with LF, on every
+# platform. Without this, a Windows checkout rewrites the whole tree to
+# CRLF and `git status` reports every file as modified when nothing
+# actually changed. (TEC-054)
+* text=auto eol=lf
+
+# Must stay LF regardless: these are executed by bash in CI / in Docker,
+# and a CR at the end of a shebang line breaks them outright.
+*.sh text eol=lf
+Dockerfile* text eol=lf
+
+# Binary — never line-ending-converted, never diffed as text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.mp3 binary
+*.wav binary
+*.ogg binary
+*.keystore binary
+*.jks binary
+*.p12 binary

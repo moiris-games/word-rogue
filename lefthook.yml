@@ -1,0 +1,18 @@
+# Lefthook configuration
+# https://github.com/evilmartians/lefthook
+#
+# Activated by `npm run prepare` (lefthook install), which lands with the
+# app scaffold. Until then these hooks are inert.
+
+pre-commit:
+  parallel: true
+  jobs:
+    - name: lint
+      glob: "*.{js,ts,jsx,tsx,cjs,mjs}"
+      run: npx expo lint --fix {staged_files}
+      stage_fixed: true
+
+commit-msg:
+  jobs:
+    - name: commitlint
+      run: npx commitlint --edit {1}

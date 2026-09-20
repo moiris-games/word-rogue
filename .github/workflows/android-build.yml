@@ -1,0 +1,175 @@
+name: Android Build
+
+# TEC-055: builds the signed release APK (attached to the GitHub Release)
+# AND the release AAB published to the Play Store internal track, in one
+# job. A single Gradle invocation shares the compiled native libs between
+# assembleRelease and publishReleaseBundle — splitting these into two
+# workflows means doing the expensive C++ compile twice for no benefit.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      track:
+        description: "Play Store track for the publish step (manual runs only — the automatic release trigger always uses internal)"
+        required: false
+        default: "internal"
+        type: choice
+        options:
+          - internal
+          - alpha
+          - beta
+          - production
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # Caches ~/.gradle (dependency downloads + Gradle's own build cache
+      # for cacheable tasks like Java/Kotlin compilation, resource
+      # merging). Does NOT cover the CMake/C++ native build — Gradle's
+      # Android plugin treats those tasks as a non-cacheable black box.
+      # ccache below handles that half.
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
+
+      # React Native's own CMake scripts auto-detect ccache via
+      # find_program(ccache) and wire it in as the compile launcher with
+      # no extra config needed — this is what actually skips recompiling
+      # Reanimated/Gesture Handler's C++ (the slowest part of a cold
+      # build) when their native sources haven't changed.
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: android-ndk-${{ runner.os }}
+
+      - name: Install Dependencies
+        run: npm ci
+
+      # TEC-042. Play Console requires a strictly increasing versionCode on
+      # every upload; app.json doesn't set one, so a plain `expo prebuild`
+      # always generates versionCode 1, which would make every publish
+      # after the first one fail. Derive it from the release tag
+      # (vX.Y.Z -> X*10000 + Y*100 + Z) so it's monotonic across releases
+      # with no manual bookkeeping; falls back to the run number for manual
+      # dispatch runs not tied to a tag.
+      - name: Set Android versionCode
+        run: |
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            TAG="${{ github.event.release.tag_name }}"
+            VERSION="${TAG#v}"
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+            CODE=$((MAJOR * 10000 + MINOR * 100 + PATCH))
+          else
+            CODE=${{ github.run_number }}
+          fi
+          echo "Using versionCode=$CODE"
+          node -e "
+            const fs = require('fs');
+            const app = JSON.parse(fs.readFileSync('app.json', 'utf8'));
+            app.expo.android = app.expo.android || {};
+            app.expo.android.versionCode = $CODE;
+            fs.writeFileSync('app.json', JSON.stringify(app, null, 2) + '\n');
+          "
+
+      # TEC-045: android/ is never committed; it is regenerated from
+      # app.json + plugins/ on every build.
+      - name: Generate native android/ project
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Setup Android SDK
+        # ubuntu-latest ships a full SDK preinstalled at $ANDROID_HOME;
+        # android-actions/setup-android tries to install the long-removed
+        # legacy 'tools' package and fails outright, so we don't use it.
+        # Just make sure the exact platform/build-tools this generated
+        # project needs are present, licenses accepted.
+        run: |
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | sort -V | tail -1)
+          echo "Using $SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "platforms;android-35" "build-tools;36.0.0" "build-tools;35.0.0"
+
+      # TEC-041: keystores and service-account keys are never committed —
+      # they arrive as GitHub secrets and are decoded at build time.
+      - name: Decode release keystore
+        run: echo "$ANDROID_RELEASE_KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
+        env:
+          ANDROID_RELEASE_KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
+
+      - name: Decode Play service account key
+        run: echo "$PLAY_SERVICE_ACCOUNT_JSON_BASE64" | base64 -d > android/app/play-service-account.json
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON_BASE64: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON_BASE64 }}
+
+      - name: Determine Play Store track
+        id: track
+        run: |
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            echo "track=internal" >> "$GITHUB_OUTPUT"
+          else
+            echo "track=${{ github.event.inputs.track || 'internal' }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # One Gradle invocation builds the signed APK (assembleRelease) AND
+      # the AAB + uploads it to Play Console (publishReleaseBundle), so
+      # the native C++ compile is shared between both instead of done
+      # twice across two separate jobs/workflows.
+      - name: Build APK, build+publish AAB
+        working-directory: android
+        run: ./gradlew assembleRelease publishReleaseBundle --no-daemon
+        env:
+          ANDROID_RELEASE_STORE_FILE: ${{ github.workspace }}/android/app/release.keystore
+          ANDROID_RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEYSTORE_PASSWORD }}
+          ANDROID_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
+          ANDROID_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEYSTORE_PASSWORD }}
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ github.workspace }}/android/app/play-service-account.json
+          PLAY_TRACK: ${{ steps.track.outputs.track }}
+          # Makes ccache hits reuse across runs despite each run getting a
+          # fresh checkout: rewrite absolute paths relative to this fixed
+          # base rather than hashing the (always-identical, but still)
+          # working-dir path into the cache key.
+          CCACHE_BASEDIR: ${{ github.workspace }}
+          CCACHE_NOHASHDIR: "true"
+          # ccache's default compiler_check=mtime hashes the compiler
+          # binary's modification time into every cache key. On GitHub
+          # Actions the NDK/clang binary comes from the runner's base
+          # image, which gets refreshed periodically even when the binary
+          # itself is unchanged — silently invalidating every cache entry
+          # between runs. Content-based checking fixed a measured 0/162
+          # hit rate to 162/162 in flick-dot.
+          CCACHE_COMPILERCHECK: content
+
+      - name: Attach APK to GitHub Release
+        if: github.event_name == 'release'
+        run: gh release upload "${{ github.event.release.tag_name }}" android/app/build/outputs/apk/release/app-release.apk#word-rogue.apk --repo ${{ github.repository }} --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload APK as workflow artifact
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: word-rogue-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
