@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "Word Rogue",
+    "slug": "word-rogue",
+    "version": "0.0.0",
+    "orientation": "portrait",
+    "scheme": "wordrogue",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "android": {
+      "package": "com.moirisgames.wordrogue"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      "./plugins/withAndroidSigning",
+      "./plugins/withPlayPublisher",
+      "./plugins/withRestrictedAbis"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}

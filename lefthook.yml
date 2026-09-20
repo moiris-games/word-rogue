@@ -1,15 +1,16 @@
 # Lefthook configuration
 # https://github.com/evilmartians/lefthook
 #
-# Activated by `npm run prepare` (lefthook install), which lands with the
-# app scaffold. Until then these hooks are inert.
+# Installed by `npm run prepare` (lefthook install).
 
 pre-commit:
   parallel: true
   jobs:
     - name: lint
       glob: "*.{js,ts,jsx,tsx,cjs,mjs}"
-      run: npx expo lint --fix {staged_files}
+      # Matches CI: eslint directly, so the engine-core boundary rules of
+      # TEC-007 apply to staged files under lib/ too.
+      run: npx eslint --fix --no-warn-ignored {staged_files}
       stage_fixed: true
 
 commit-msg:
